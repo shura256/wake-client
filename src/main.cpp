@@ -1,22 +1,15 @@
-#include <iostream>
-#include <memory>
-#include <string>
-
-#include <cassert>
-#include <cerrno>
-#include <cstring>
 #include <fcntl.h>
 #include <termios.h>
 #include <unistd.h>
 
+#include <cassert>
+#include <cerrno>
+#include <cstring>
+#include <iostream>
+#include <memory>
+#include <string>
+
 typedef struct uart_port_options {
-  uart_port_options(std::string device, uint32_t baud_rate, uint8_t word_length,
-                    uint8_t stop_bits, std::string parity)
-      : device(device),
-        baud_rate(baud_rate),
-        word_length(word_length),
-        stop_bits(stop_bits),
-        parity(parity) {}
   std::string device;
   uint32_t baud_rate;
   uint8_t word_length;
@@ -33,9 +26,16 @@ std::ostream& operator<<(std::ostream& out, const uart_port_options_t* value) {
   return out;
 }
 
-std::unique_ptr<uart_port_options_t> get_device_config() {
-  return std::make_unique<uart_port_options_t>("/dev/ttyACM1", 115200, 8, 1,
-                                               "none");
+std::unique_ptr<uart_port_options_t> get_device_config(int argc, char** argv) {
+  auto device_config = std::make_unique<uart_port_options_t>();
+
+  device_config->device = argv[1];
+  device_config->baud_rate = 115200;
+  device_config->word_length = 8;
+  device_config->stop_bits = 1;
+  device_config->parity = "none";
+
+  return device_config;
 }
 
 int setup_port(int port_fd) {
@@ -43,17 +43,20 @@ int setup_port(int port_fd) {
   int speed = B115200;
 
   if (tcgetattr(port_fd, &tty) != 0) {
-    std::cerr << "error " << errno << ", from tcgetattr(), " << strerror(errno) << std::endl;
+    std::cerr << "error " << errno << ", from tcgetattr(), " << strerror(errno)
+              << std::endl;
     return -1;
   }
 
   if (cfsetispeed(&tty, speed) == -1) {
-    std::cerr << "error " << errno << ", from cfsetispeed(), " << strerror(errno) << std::endl;
+    std::cerr << "error " << errno << ", from cfsetispeed(), "
+              << strerror(errno) << std::endl;
     return -1;
   }
 
   if (cfsetospeed(&tty, speed) == -1) {
-    std::cerr << "error " << errno << ", from cfsetospeed(), " << strerror(errno) << std::endl;
+    std::cerr << "error " << errno << ", from cfsetospeed(), "
+              << strerror(errno) << std::endl;
     return -1;
   }
 
@@ -68,7 +71,8 @@ int setup_port(int port_fd) {
   tty.c_oflag &= ~OPOST;
 
   if (tcsetattr(port_fd, TCSANOW, &tty) != 0) {
-    std::cerr << "error " << errno << ", setting term attributes, " << strerror(errno) << std::endl;
+    std::cerr << "error " << errno << ", setting term attributes, "
+              << strerror(errno) << std::endl;
     return -1;
   }
 
@@ -84,13 +88,17 @@ void print_menu() {
             << "\tq - quit\n";
 }
 
-int main() {
-  auto port_options = get_device_config();
-  std::cout << port_options.get();
+int main(int argc, char** argv) {
+  if (argc < 2) {
+    std::cerr << "usage: " << argv[0] << " <device path>" << std::endl;
+    return -1;
+  }
+
+  auto port_options = get_device_config(argc, argv);
+  std::cout << port_options.get() << std::endl;
 
   int ret;
-  int serial_fd =
-      open(port_options->device.c_str(), O_RDWR | O_NOCTTY);
+  int serial_fd = open(port_options->device.c_str(), O_RDWR | O_NOCTTY);
   if (serial_fd < 0) {
     std::cerr << "error " << errno << ", openning " << port_options->device
               << ", " << strerror(errno) << std::endl;
@@ -98,8 +106,7 @@ int main() {
   }
 
   ret = setup_port(serial_fd);
-  if (ret < 0)
-    return ret;
+  if (ret < 0) return ret;
 
   uint8_t port_buffer[1];
   size_t buffer_size;
@@ -134,18 +141,21 @@ int main() {
         port_buffer[0] = 1;
         buffer_size = 1;
 
-        std::cout << "send blinking status request" << std::endl;
+        std::cout << "\nsend blinking status request" << std::endl;
         completed_size = write(serial_fd, port_buffer, buffer_size);
         if (completed_size == -1)
-          std::cerr << "send error " << errno << ", " << strerror(errno) << std::endl;
+          std::cerr << "send error " << errno << ", " << strerror(errno)
+                    << std::endl;
         assert((ssize_t)buffer_size == completed_size);
 
         buffer_size = 1;
         completed_size = read(serial_fd, (void*)port_buffer, buffer_size);
         if (completed_size == -1)
-          std::cerr << "receive error " << errno << ", " << strerror(errno) << std::endl;
+          std::cerr << "receive error " << errno << ", " << strerror(errno)
+                    << std::endl;
         assert((ssize_t)buffer_size == completed_size);
-        std::cout << "blinking status: " << (int)port_buffer[0] << std::endl;
+        std::cout << "blinking status: " << (int)port_buffer[0] << std::endl
+                  << std::endl;
 
         break;
 
@@ -153,10 +163,11 @@ int main() {
         port_buffer[0] = 2;
         buffer_size = 1;
 
-        std::cout << "send turn on blinking request" << std::endl;
+        std::cout << "\nsend turn on blinking request\n" << std::endl;
         completed_size = write(serial_fd, port_buffer, 1);
         if (completed_size == -1)
-          std::cerr << "send error " << errno << ", " << strerror(errno) << std::endl;
+          std::cerr << "send error " << errno << ", " << strerror(errno)
+                    << std::endl;
         assert((ssize_t)buffer_size == completed_size);
 
         break;
@@ -165,10 +176,11 @@ int main() {
         port_buffer[0] = 3;
         buffer_size = 1;
 
-        std::cout << "send turn off blinking request" << std::endl;
+        std::cout << "\nsend turn off blinking request\n" << std::endl;
         completed_size = write(serial_fd, port_buffer, 1);
         if (completed_size == -1)
-          std::cerr << "send error " << errno << ", " << strerror(errno) << std::endl;
+          std::cerr << "send error " << errno << ", " << strerror(errno)
+                    << std::endl;
         assert((ssize_t)buffer_size == completed_size);
 
         break;
